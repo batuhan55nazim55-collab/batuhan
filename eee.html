@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>X-O-X Full Çizgili</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Arial Black', sans-serif;
+            background: #121212;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: white;
+        }
+
+        /* ANA MENÜ */
+        #menu {
+            text-align: center;
+            background: #1e1e1e;
+            padding: 60px;
+            border-radius: 30px;
+            border: 4px solid #333;
+        }
+
+        /* OYUN ALANI */
+        #game {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .board-container {
+            position: relative; /* Çizginin üstüne binmesi için şart */
+            width: 360px;
+            height: 360px;
+        }
+
+        .board {
+            display: grid;
+            grid-template-columns: repeat(3, 110px);
+            grid-template-rows: repeat(3, 110px);
+            gap: 15px;
+        }
+
+        .cell {
+            width: 110px;
+            height: 110px;
+            background: #252525;
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 4rem;
+            cursor: pointer;
+            transition: 0.2s;
+            z-index: 1;
+        }
+
+        .cell:hover { background: #333; }
+
+        /* KAZANAN ÇİZGİSİ (SVG) */
+        #svg-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Altındaki hücrelere tıklanabilsin */
+            z-index: 10;
+            display: none;
+        }
+
+        line {
+            stroke: #ff0040; /* Parlak Kırmızı */
+            stroke-width: 12;
+            stroke-linecap: round;
+            filter: drop-shadow(0 0 8px #ff0040);
+            stroke-dasharray: 1000;
+            stroke-dashoffset: 1000;
+            animation: drawLine 0.5s forwards ease-out;
+        }
+
+        @keyframes drawLine { to { stroke-dashoffset: 0; } }
+
+        .btn {
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            background: #00dbde;
+            color: black;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            margin-top: 30px;
+        }
+
+        .status { font-size: 2rem; margin-bottom: 20px; color: #00dbde; }
+    </style>
+</head>
+<body>
+
+    <div id="menu">
+        <h1 style="font-size: 4rem; margin-bottom: 20px;">XOX</h1>
+        <button class="btn" onclick="start()">OYUNA BAŞLA</button>
+    </div>
+
+    <div id="game">
+        <div class="status" id="status">SIRA: X</div>
+        <div class="board-container">
+            <svg id="svg-layer"><line id="line" x1="0" y1="0" x2="0" y2="0" /></svg>
+            <div class="board">
+                <div class="cell" onclick="hit(this, 0)"></div>
+                <div class="cell" onclick="hit(this, 1)"></div>
+                <div class="cell" onclick="hit(this, 2)"></div>
+                <div class="cell" onclick="hit(this, 3)"></div>
+                <div class="cell" onclick="hit(this, 4)"></div>
+                <div class="cell" onclick="hit(this, 5)"></div>
+                <div class="cell" onclick="hit(this, 6)"></div>
+                <div class="cell" onclick="hit(this, 7)"></div>
+                <div class="cell" onclick="hit(this, 8)"></div>
+            </div>
+        </div>
+        <button class="btn" onclick="location.reload()" style="background:#ff0040; color:white;">ANA MENÜ</button>
+    </div>
+
+    <script>
+        let p = 'X', board = ["","","","","","","","",""], active = true;
+
+        // Milimetrik Çizgi Koordinatları
+        const winCombos = [
+            { c: [0, 1, 2], l: [10, 55, 350, 55] },   // Üst Yatay
+            { c: [3, 4, 5], l: [10, 180, 350, 180] }, // Orta Yatay
+            { c: [6, 7, 8], l: [10, 305, 350, 305] }, // Alt Yatay
+            { c: [0, 3, 6], l: [55, 10, 55, 350] },   // Sol Dikey
+            { c: [1, 4, 7], l: [180, 10, 180, 350] }, // Orta Dikey
+            { c: [2, 5, 8], l: [305, 10, 305, 350] }, // Sağ Dikey
+            { c: [0, 4, 8], l: [15, 15, 345, 345] },  // Çapraz \
+            { c: [2, 4, 6], l: [345, 15, 15, 345] }   // Çapraz /
+        ];
+
+        function start() {
+            document.getElementById('menu').style.display = 'none';
+            document.getElementById('game').style.display = 'flex';
+        }
+
+        function hit(el, i) {
+            if (board[i] || !active) return;
+            board[i] = p;
+            el.textContent = p;
+            el.style.color = (p === 'X') ? '#ff0040' : '#00dbde';
+            
+            let win = winCombos.find(w => board[w.c[0]] && board[w.c[0]] === board[w.c[1]] && board[w.c[0]] === board[w.c[2]]);
+            
+            if (win) {
+                document.getElementById('status').textContent = p + " KAZANDI!";
+                let l = document.getElementById('line');
+                l.setAttribute('x1', win.l[0]); l.setAttribute('y1', win.l[1]);
+                l.setAttribute('x2', win.l[2]); l.setAttribute('y2', win.l[3]);
+                document.getElementById('svg-layer').style.display = 'block';
+                active = false;
+            } else if (!board.includes("")) {
+                document.getElementById('status').textContent = "BERABERE!";
+                active = false;
+            } else {
+                p = (p === 'X') ? 'O' : 'X';
+                document.getElementById('status').textContent = "SIRA: " + p;
+            }
+        }
+    </script>
+</body>
+</html>

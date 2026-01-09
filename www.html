@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Gemini Ultimate v68 - Kararlı Denge</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: white; user-select: none; }
+        canvas { display: block; }
+        #menu { position: absolute; width: 100%; height: 100%; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; }
+        .btn { width: 350px; padding: 15px; margin: 10px; font-size: 18px; font-weight: bold; color: #00D2FF; background: rgba(0,210,255,0.1); border: 2px solid #00D2FF; border-radius: 12px; cursor: pointer; text-align: center; }
+        .btn:hover { background: #00D2FF; color: #000; }
+        #ui { position: absolute; top: 20px; left: 20px; z-index: 1000; pointer-events: none; }
+        #nav { position: absolute; top: 20px; right: 20px; z-index: 10000; }
+        .exit-btn { padding: 10px 20px; background: #ff4757; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        #boss-ui { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); width: 300px; display: none; text-align: center; }
+        #boss-bar { width: 100%; height: 15px; background: #333; border: 2px solid #ff4757; border-radius: 10px; overflow: hidden; }
+        #boss-fill { height: 100%; background: #ff4757; width: 100%; }
+        #upgrade-menu { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.95); padding: 40px; border: 4px solid #ffff00; border-radius: 20px; display: none; z-index: 11000; text-align: center; }
+    </style>
+</head>
+<body>
+
+<div id="nav"><button class="exit-btn" onclick="location.reload()">🏠 MENÜ</button></div>
+
+<div id="upgrade-menu">
+    <h1 style="color:#ffff00">GÜÇ SEÇ!</h1>
+    <div class="btn" onclick="applyUpgrade('damage')">💥 HASAR +2</div>
+    <div class="btn" onclick="applyUpgrade('speed')">⚡ HIZ +3</div>
+    <div class="btn" onclick="applyUpgrade('hp')">❤️ CAN YENİLE</div>
+</div>
+
+<div id="boss-ui">
+    <div id="boss-name" style="color:red; font-weight:bold; margin-bottom:5px;">SÜPER BOSS</div>
+    <div id="boss-bar"><div id="boss-fill"></div></div>
+</div>
+
+<div id="menu">
+    <h1 style="color:#00D2FF; font-size: 40px; text-shadow: 0 0 20px #00D2FF">GEMINI v68</h1>
+    <div class="btn" onclick="startGame('battle')">⚔️ SAVAŞ MODU (YAVAŞ DÜŞMANLAR)</div>
+    <div class="btn" onclick="startGame('parkour')">🚀 PARKUR MODU</div>
+    <div class="btn" onclick="startGame('flappy')">🐦 FLAPPY (ÖLÜM FIX)</div>
+</div>
+
+<div id="ui">
+    <div id="score-txt" style="font-size: 24px; color: #ffff00;">Skor: 0 | Seviye: 1</div>
+    <div id="hp-box" style="font-size: 24px;"></div>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const keys = {};
+    let mouseX = 0, mouseY = 0;
+
+    let mode = '', score = 0, level = 1, hp = 3, gameActive = false, isPaused = false;
+    let player = { x: 0, y: 0, w: 45, h: 45, vx: 0, vy: 0, speed: 7, dmg: 10, jumps: 0 };
+    let enemies = [], bullets = [], pipes = [], platforms = [], boss = null, portal = null;
+    let camX = 0, enemyTimer = 0, lastBossScore = 0;
+
+    window.addEventListener('keydown', e => keys[e.code] = true);
+    window.addEventListener('keyup', e => keys[e.code] = false);
+    window.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
+    window.addEventListener('mousedown', () => { if(gameActive && !isPaused) handleAction(); });
+
+    function handleAction() {
+        if(mode === 'battle') {
+            const angle = Math.atan2(mouseY - (player.y + 22), mouseX - (player.x + 22));
+            bullets.push({ x: player.x+22, y: player.y+22, vx: Math.cos(angle)*15, vy: Math.sin(angle)*15 });
+        } else if(mode === 'flappy') { 
+            player.vy = -9; 
+        } else if(mode === 'parkour') {
+            if(player.jumps < 2) { 
+                player.vy = -14;
+                player.jumps++;
+            }
+        }
+    }
+
+    function startGame(m) {
+        mode = m; gameActive = true; score = 0; level = 1; hp = 3; 
+        enemies = []; bullets = []; pipes = []; platforms = []; boss = null;
+        document.getElementById('menu').style.display = 'none';
+        canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+        initLevel();
+        loop();
+    }
+
+    function initLevel() {
+        player.vx = 0; player.vy = 0; player.jumps = 0;
+        if(mode === 'battle') {
+            player.speed = 7.5; player.x = canvas.width/2; player.y = canvas.height-100;
+        } else if(mode === 'parkour') {
+            player.speed = 8; player.x = 100; player.y = 200; camX = 0;
+            platforms = [];
+            platforms.push({x:0, y:canvas.height-100, w:400, h:100});
+            for(let i=1; i<15; i++) {
+                platforms.push({x: i * 450, y: canvas.height - (Math.random() * 300 + 150), w: 180, h: 30});
+            }
+            portal = {x: 15 * 450, y: canvas.height - 500, w: 70, h: 500};
+        } else if(mode === 'flappy') {
+            player.x = 150; player.y = canvas.height/2;
+            pipes = [];
+        }
+    }
+
+    function applyUpgrade(type) {
+        if(type==='damage') player.dmg += 2;
+        if(type==='speed') player.speed += 3;
+        if(type==='hp') hp = 3;
+        isPaused = false;
+        document.getElementById('upgrade-menu').style.display = 'none';
+    }
+
+    function update() {
+        if(!gameActive || isPaused) return;
+
+        if(mode === 'battle') {
+            if(keys['KeyW'] || keys['ArrowUp']) player.y -= player.speed;
+            if(keys['KeyS'] || keys['ArrowDown']) player.y += player.speed;
+            if(keys['KeyA'] || keys['ArrowLeft']) player.x -= player.speed;
+            if(keys['KeyD'] || keys['ArrowRight']) player.x += player.speed;
+
+            player.x = Math.max(0, Math.min(canvas.width-player.w, player.x));
+            player.y = Math.max(0, Math.min(canvas.height-player.h, player.y));
+
+            enemyTimer++;
+            if(!boss && enemyTimer > 35) {
+                // DÜŞMAN HIZI YAVAŞLATILDI (2.2 yerine 3.5'tan başlıyor)
+                enemies.push({x: Math.random() * canvas.width, y: -50, s: 2.2 + (level * 0.3)});
+                enemyTimer = 0;
+            }
+
+            if(score >= lastBossScore + 100 && !boss) {
+                boss = { x: canvas.width/2, y: -200, w: 180, h: 180, hp: 150 + (level*50), max: 150 + (level*50), s: 1.8 };
+                document.getElementById('boss-ui').style.display = 'block';
+            }
+
+            if(boss) {
+                if(boss.y < 50) boss.y += 2;
+                let a = Math.atan2(player.y-boss.y, player.x-boss.x);
+                boss.x += Math.cos(a)*boss.s; boss.y += Math.sin(a)*boss.s;
+                if(Math.hypot((player.x+22)-(boss.x+90), (player.y+22)-(boss.y+90)) < 100) { 
+                    hp--; player.x += 100; if(hp<=0) location.reload(); 
+                }
+            }
+
+            enemies.forEach((en, i) => {
+                let a = Math.atan2(player.y-en.y, player.x-en.x); 
+                en.x += Math.cos(a)*en.s; en.y += Math.sin(a)*en.s;
+                if(Math.hypot(player.x-en.x, player.y-en.y) < 40) { 
+                    hp--; enemies.splice(i,1); if(hp<=0) location.reload(); 
+                }
+            });
+
+            bullets.forEach((b, bi) => {
+                b.x += b.vx; b.y += b.vy;
+                if(boss && b.x > boss.x && b.x < boss.x+boss.w && b.y > boss.y && b.y < boss.y+boss.h) {
+                    boss.hp -= player.dmg; bullets.splice(bi,1);
+                    document.getElementById('boss-fill').style.width = (boss.hp/boss.max*100) + "%";
+                    if(boss.hp <= 0) { 
+                        boss=null; lastBossScore=score; score+=200; 
+                        isPaused=true; document.getElementById('upgrade-menu').style.display='block'; 
+                        document.getElementById('boss-ui').style.display='none'; 
+                    }
+                }
+                enemies.forEach((en, ei) => { if(Math.hypot(b.x-en.x, b.y-en.y) < 30) { enemies.splice(ei,1); bullets.splice(bi,1); score+=10; }});
+            });
+        }
+        else if(mode === 'parkour') {
+            if(keys['KeyA'] || keys['ArrowLeft']) player.x -= player.speed; 
+            if(keys['KeyD'] || keys['ArrowRight']) player.x += player.speed;
+            player.vy += 0.65; player.y += player.vy;
+            platforms.forEach(p => { 
+                if(player.vy > 0 && player.x+player.w > p.x && player.x < p.x+p.w && player.y+player.h > p.y && player.y+player.h < p.y+player.vy+10) { 
+                    player.y = p.y-player.h; player.vy = 0; player.jumps = 0;
+                }
+            });
+            if(player.y > canvas.height + 200) { player.x = 100; player.y = 200; player.vy = 0; }
+            if(portal && player.x > portal.x) { level++; initLevel(); }
+            camX += (player.x - camX - 300) * 0.1;
+        }
+        else if(mode === 'flappy') {
+            player.vy += 0.5; player.y += player.vy;
+            if(enemyTimer++ > 90) { 
+                pipes.push({x:canvas.width, t:Math.random()*250+100}); 
+                enemyTimer=0; 
+            }
+            pipes.forEach(p => { 
+                p.x -= 4.5; 
+                if(player.x+player.w > p.x && player.x < p.x+80 && (player.y < p.t || player.y+player.h > p.t+320)) location.reload(); 
+            });
+            // YERE DÜŞÜNCE ÖLME FİX
+            if(player.y + player.h > canvas.height || player.y < 0) {
+                location.reload();
+            }
+        }
+
+        document.getElementById('score-txt').innerText = `Skor: ${score} | Seviye: ${level}`;
+        document.getElementById('hp-box').innerText = mode==='battle'?"❤️".repeat(hp):"";
+    }
+
+    function draw() {
+        ctx.fillStyle = "#000"; ctx.fillRect(0,0,canvas.width,canvas.height);
+        ctx.save(); if(mode==='parkour') ctx.translate(-camX, 0);
+        
+        ctx.fillStyle = "#00D2FF"; ctx.fillRect(player.x, player.y, player.w, player.h);
+
+        if(mode==='battle') {
+            if(boss) { ctx.fillStyle = "red"; ctx.fillRect(boss.x, boss.y, boss.w, boss.h); }
+            ctx.fillStyle = "orange"; enemies.forEach(en => ctx.fillRect(en.x, en.y, 35, 35));
+            ctx.fillStyle = "yellow"; bullets.forEach(b => ctx.fillRect(b.x-4, b.y-4, 8, 8));
+        } else if(mode==='parkour') {
+            ctx.fillStyle = "#444"; platforms.forEach(p => ctx.fillRect(p.x, p.y, p.w, p.h));
+            ctx.fillStyle = "white"; if(portal) ctx.fillRect(portal.x, portal.y, portal.w, portal.h);
+        } else if(mode==='flappy') {
+            ctx.fillStyle = "green"; pipes.forEach(p => { ctx.fillRect(p.x, 0, 80, p.t); ctx.fillRect(p.x, p.t+320, 80, canvas.height); });
+        }
+        ctx.restore();
+    }
+    function loop() { if(gameActive) { update(); draw(); requestAnimationFrame(loop); } }
+</script>
+</body>
+</html>
